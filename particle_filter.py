@@ -156,10 +156,12 @@ class ParticleFilter():
      [ 2.          2.          3.33333333]]
     
     '''
+    
+    #covariance formula : 1/sum(weights) * sum(X-mean)(X-mean)^T
       particles_weight=particles_weight.reshape(len(particles_weight),1)
       diff=particles_value-mean
       #print(diff)
-      cov = np.dot((particles_weight*diff).T,diff)
+      cov = 1./(particles_weight.sum())*np.dot((particles_weight*diff).T,diff)
       #print(sigma2)
       return mean , cov
     

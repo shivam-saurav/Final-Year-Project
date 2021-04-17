@@ -28,7 +28,7 @@ from PySpice.Doc.ExampleTools import find_libraries
 from PySpice.Spice.Library import SpiceLibrary
 
 
-#taken from https://stable-baselines.readthedocs.io/en/master/_modules/stable_baselines/common/evaluation.html#evaluate_policy and made few changes.
+
 
 import typing
 import tqdm
@@ -51,32 +51,24 @@ class custom_env(gym.Env) :
     self.Rl=Rl
     self.initial_condition=initial_condition
     self.number_experiment=number_of_experiment
+    
     #self.observation=0#Vb
-# =============================================================================
-#     z = np.arange(-10, 10, 0.001)
-#     self.prior_dist=norm.pdf(z, self.state[0], math.sqrt(self.state[1]))
-#     self.initial_condition=0.0
-#     self.threshold_variance=threshold_var
-#     self.cost=0.0
-#     self.total_cost=[]
-# =============================================================================
+
 
     # Define action and observation space
     # They must be gym.spaces objects
     # Example when using discrete actions, we have two: left and right
     n_actions = 7
     self.action_space = spaces.Discrete(n_actions)
-    #self.action_space = spaces.Box(low=1,high=n_actions,shape=(1,),dtype=np.float32)
-    #high=np.array([100,100])
-    #hig=100
+    
     a=np.ones(30)
     a.fill(100)
-    self.observation_space = spaces.Box(low=-a,high=a, shape=(30,))   
+    self.observation_space = spaces.Box(low=-a,high=a, shape=(30,))   #instead of space from -inf to +inf, we have taken it to be -100 to +100 on a (30,) vector
     #print(self.observation_space)                                    
     
-  def reset_initial_condition(self):
+  def reset_number_of_experiment(self): #reset_number_of_experiment after every env.reset()
       #self.initial_condition=0
-      self.number_experiment=self.number_experiment
+      self.dummy=self.number_experiment#dummy variable
         
   def reset(self):
       """
@@ -90,9 +82,8 @@ class custom_env(gym.Env) :
     
     # here we convert to float32 to make it more general (in case we want to use continuous actions)
     
-    #return self.initial_condition
-      self.reset_initial_condition()
-      self.observation=0
+      self.reset_number_of_experiment()
+      self.observation=0 #on environment reset we start with Vb=0
       return np.array([self.observation]).astype(np.float32)
     
 
@@ -106,7 +97,7 @@ class custom_env(gym.Env) :
     circuit.R('Rs', 1, 'cap_input_voltage' , self.Rs@u_Ω) #node 2='source_input_node' and node 3='source_output_node'
     circuit.R('Rp', 'cap_input_voltage' , 'cap_output_voltage', self.Rp@u_Ω)
     circuit.C('Cp', 'cap_input_voltage' , 'cap_output_voltage', self.Cp@u_F , ic=0@u_V) #ic=initial condition
-    circuit.R('Rl', 'cap_output_voltage' , 'source_input_node', self.Rl@u_Ω)
+    circuit.R('Rl', 'cap_output_voltage' , 'source_input_node', self.Rl@u_Ω)  #Rl=0
     #print(circuit)
     
     if self.frequency==0:
@@ -121,7 +112,7 @@ class custom_env(gym.Env) :
     print(initial_condition)
     simulator = circuit.simulator(temperature=25, nominal_temperature=25)
     simulator.initial_condition(cap_input_voltage=initial_condition@u_V)
-    analysis = simulator.transient(step_time=0.01@u_s, end_time=100@u_s)
+    analysis = simulator.transient(step_time=0.01@u_s, end_time=1@u_s) #@u_s is sec and @u_us is micro sec
     
     output_node=[]
     input_node=[]
@@ -148,21 +139,23 @@ class custom_env(gym.Env) :
     ax.plot(analysis.cap_input_voltage-analysis.cap_output_voltage)
     #ax.plot(analysis.cap_input_voltage)
     
-    return(output_node[10000],input_node[10000]-output_node[10000]) #at every 0.1 millsec we are returning the output value 100*step_time=0.1 millisec,in array it will be 99th value100*step_time=0.1 sec,in array it will be 99th value
+    return(output_node[100],input_node[100]-output_node[100]) #at every 1 we are returning the output value 100*step_time=1sec,in array it will be 99th value100*step_time=0.1 sec,in array it will be 99th value
 
   
   
 
-#KL(P||Q)
-  def kl_divergence(self,p, q):
-    epsilon=0.0000000001
-    p=np.where(p != 0, p , epsilon)
-    return np.sum(np.where(p != 0, p * np.log(p / q), 0)) #!np.all
-
-#js divergence
-  def js_divergence(self,p, q):
-    m = (1./2.)*(p + q)
-    return (1./2.)*self.kl_divergence(p, m) + (1./2.)*self.kl_divergence(q, m)
+# =============================================================================
+# #KL(P||Q)
+#   def kl_divergence(self,p, q):
+#     epsilon=0.0000000001
+#     p=np.where(p != 0, p , epsilon)
+#     return np.sum(np.where(p != 0, p * np.log(p / q), 0)) #!np.all
+# 
+# #js divergence
+#   def js_divergence(self,p, q):
+#     m = (1./2.)*(p + q)
+#     return (1./2.)*self.kl_divergence(p, m) + (1./2.)*self.kl_divergence(q, m)
+# =============================================================================
 
   #dk is the design variable in sOED literature which is action in RL terms and current for our experiment
   def step(self,action):
@@ -175,20 +168,22 @@ class custom_env(gym.Env) :
     self.obs,cap_voltage=self.spice_circuit(self.dk,frequency=4,initial_condition=self.initial_condition) #at every 0.1 sec
     self.initial_condition=cap_voltage
     
-
-    self.number_experiment=self.number_experiment-1
+    
+    self.dummy=self.dummy-1
     #print(self.number_experiment)
-    done=bool(self.number_experiment<2)
+    done=bool(self.dummy<2)
     #print(done)
     #done=False
-
+    
+    
+    #putting no of experiments as constraints instead of variance condition as done before 
     if done:
         self.initial_condition=0.0
         reward=0
 
     else:
         reward=-(0.7*1+0.3*self.dk**2) #70% weightage given to each iteration as cost and 30% to energy cost
-      #self.cost=self.cost+self.dk**2 #energy
+      
 
     info={}
     #print(info)
@@ -201,39 +196,6 @@ class custom_env(gym.Env) :
   def close(self):
     pass
 
-  def total_costs(self):
-    return(self.total_cost)
-
-  def final_theta(self):
-    return(self.state[0])
-
-#env = custom_env()
-# If the environment don't follow the interface, an error will be thrown
-#check_env(env, warn=True)
-
-# =============================================================================
-# from stable_baselines import DQN, PPO2, A2C, ACKTR
-# from stable_baselines.common.cmd_util import make_vec_env
-# 
-# # Instantiate the env
-# env = custom_env(number_of_experiment=10,initial_condition=0,Voc=3.63,Rs=0.1,Rp=0.03,Cp=500,Rl=0)
-# # wrap it
-# env = make_vec_env(lambda: env, n_envs=1)
-# =============================================================================
-
-# agent   #verbose=1 means info about training
-#model = DQN('MlpPolicy', env, verbose=1)#MlpPolicy,CnnPolicy,MlpLnLstmPolicy,MlpLstmPolicy,CnnLstmPolicy,CnnPolicy,CnnLnLstmPolicy
-# obs=env.reset()
-# action, _ = model.predict(obs, deterministic=False)
-# print(action)
-
-# =============================================================================
-# mean_reward, std_reward,episode_rewards,total_iteration_in_each_episode = evaluate_policy(model, env, n_eval_episodes=10,deterministic=False)
-# #before learning
-# print(f"mean_reward:{mean_reward:.2f} +/- {std_reward:.2f}")
-# print("iteration per episodes",np.mean(total_iteration_in_each_episode))
-# #plotcurve(episode_rewards)
-# =============================================================================
 
 
 # =============================================================================
