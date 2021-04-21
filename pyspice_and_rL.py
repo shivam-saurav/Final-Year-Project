@@ -57,9 +57,10 @@ class custom_env(gym.Env) :
 
     # Define action and observation space
     # They must be gym.spaces objects
-    # Example when using discrete actions, we have two: left and right
-    n_actions = 7
-    self.action_space = spaces.Discrete(n_actions)
+    
+    #n_actions = 7
+    #self.action_space = spaces.Discrete(n_actions)
+    self.action_space = spaces.MultiDiscrete([7,6])  #current action ranges from 0 to 6 and frequency action ranges from 0 to 5
     
     a=np.ones(30)
     a.fill(100)
@@ -68,6 +69,7 @@ class custom_env(gym.Env) :
     
   def reset_number_of_experiment(self): #reset_number_of_experiment after every env.reset()
       #self.initial_condition=0
+      self.initial_condition=0.0
       self.dummy=self.number_experiment#dummy variable
         
   def reset(self):
@@ -76,7 +78,7 @@ class custom_env(gym.Env) :
     :return: (np.array) 
     """
     
-    # Initialize the agent at the right of the grid
+    
     #self.state = self.observation
     
     
@@ -159,26 +161,29 @@ class custom_env(gym.Env) :
 
   #dk is the design variable in sOED literature which is action in RL terms and current for our experiment
   def step(self,action):
-
+      
+      
     #print(k," | mean : ",self.state[0]," | var : ",self.state[1])
-    self.dk=(action+3)/10
+    #print(action)
+    self.dk=(action[0]+3)/10
+    self.freq=action[1]/100
     #print(self.orig_theta* self.dk) 
     
     #print("initial_condition: ",self.initial_condition)
-    self.obs,cap_voltage=self.spice_circuit(self.dk,frequency=4,initial_condition=self.initial_condition) #at every 0.1 sec
+    self.obs,cap_voltage=self.spice_circuit(self.dk,frequency=self.freq,initial_condition=self.initial_condition) #at every 0.1 sec
     self.initial_condition=cap_voltage
     
     
-    self.dummy=self.dummy-1
+    #self.dummy=self.dummy-1
     #print(self.number_experiment)
-    done=bool(self.dummy<2)
+    done=False
     #print(done)
     #done=False
     
     
     #putting no of experiments as constraints instead of variance condition as done before 
     if done:
-        self.initial_condition=0.0
+       # self.initial_condition=0.0
         reward=0
 
     else:
@@ -243,3 +248,4 @@ class custom_env(gym.Env) :
 # print("Average iterations: ",np.mean(iterations))
 # 
 # =============================================================================
+

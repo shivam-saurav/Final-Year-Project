@@ -10,7 +10,7 @@ import scipy.stats
 from numpy.random import random
 
 class ParticleFilter():
-    def __init__(self,number_timesteps=100,number_particles=100):
+    def __init__(self,number_timesteps=100,number_particles=100,prior_Voc=3.63,prior_Rs=0.1,prior_Rp=0.03,prior_Cp=500,prior_Vc=0): #Voc=3.63,Rs=0.1,Rp=0.03,Cp=500,Rl=0
         self.number_timesteps=number_timesteps
         self.number_particles=number_particles
 
@@ -19,7 +19,7 @@ class ParticleFilter():
         # What are the parameters to be estimated? Voc, Rs, Rp, Cp, Vc0
         self.number_parameters = 5
         #self.Vb=observation
-        self.prior_mean = np.ones(self.number_parameters)
+        self.prior_mean = np.array([prior_Voc,prior_Rs,prior_Rp,prior_Cp,prior_Vc])
         self.prior_covariance_matrix = np.eye(self.number_parameters)
         
         self.roundoff_epsilon = 1e-100
@@ -128,9 +128,9 @@ class ParticleFilter():
               index=self.stratified_resample(self.particles_weight)
               #index=systematic_resample(particles_weight)
               self.resample_from_index(self.particles_value, self.particles_weight, index)
-          posterior_mean,posterior_covariance=self.estimate(self.particles_value,self.particles_weight)
+          posterior_mean,posterior_covariance,posterior_var=self.estimate(self.particles_value,self.particles_weight)
               
-        return posterior_mean,posterior_covariance
+        return posterior_mean,posterior_covariance,posterior_var
       
         #print(self.particles_value)
         #print(self.particles_weight)
@@ -158,12 +158,15 @@ class ParticleFilter():
     '''
     
     #covariance formula : 1/sum(weights) * sum(X-mean)(X-mean)^T
+      #print(particles_value.shape,mean.shape,particles_weight.shape)
+      var  = np.average((particles_value - mean)**2, weights=particles_weight, axis=0)
       particles_weight=particles_weight.reshape(len(particles_weight),1)
       diff=particles_value-mean
       #print(diff)
       cov = 1./(particles_weight.sum())*np.dot((particles_weight*diff).T,diff)
       #print(sigma2)
-      return mean , cov
+      #var  = np.average((particles_value - mean)**2, weights=particles_weight, axis=0)
+      return mean , cov ,var
     
     
     #print(posterior_mean)

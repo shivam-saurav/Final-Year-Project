@@ -9,7 +9,7 @@ Created on Sat Apr 17 12:43:53 2021
 from particle_filter import ParticleFilter
 from pyspice_and_rL import custom_env
 import numpy as np
-from stable_baselines import DQN
+from stable_baselines import DQN,ACKTR,A2C,PPO2
 
 # =============================================================================
 # test = ParticleFilter(number_timesteps=100,number_particles=100)
@@ -25,7 +25,7 @@ from stable_baselines import DQN
 
 
 env = custom_env(number_of_experiment=5,initial_condition=0,Voc=3.63,Rs=0.1,Rp=0.03,Cp=500,Rl=0)
-model = DQN('MlpPolicy', env, verbose=1)
+model = PPO2('MlpPolicy', env, verbose=1)
 env.reset()
 #env.render()
 
@@ -34,11 +34,12 @@ env.reset()
 # print(env.action_space)
 # print(env.action_space.sample())
 # =============================================================================
-test = ParticleFilter(number_timesteps=100,number_particles=100)
-action = 0 #initial action
+test = ParticleFilter(number_timesteps=100,number_particles=10,prior_Voc=3.6,prior_Rs=0.15,prior_Rp=0.05,prior_Cp=500,prior_Vc=0)
+action =[0,0] #initial action
 #Agent
 n_steps = 2
 #n_steps = 2
+var_threshold=[0.05,0.05,0.05,0.05,0.05] #Voc,rs,rp,cp
 iterations=[0]
 for step in range(n_steps):
   iter=0
@@ -57,13 +58,18 @@ for step in range(n_steps):
     obs, reward, done, info = env.step(action)
     print('obs=', obs, 'reward=', reward, 'done=', done)
     
-    mean,cov=test.simulate(obs,amplitude=1,frequency=1,slot_time=1)
+    mean,cov,var=test.simulate(obs,amplitude=action[0],frequency=action[1],slot_time=1) ################### Ask sir, should we pass agent's amplitude/frequency to the particle filter??
+    print("Mean Vector : ",mean)
+    print("Variance Vector : ",var)
     #print(mean,cov)
     ####flattening row wise,replace 'C' with "F" to flatten columnwise
     ob=cov.flatten('C')
     ob=np.concatenate((ob,mean)) #feature vector containing 25 elements of covariance vector and 5 elements of mean vector
-    
-    
+# =============================================================================
+#     if (np.less_equal(var,var_threshold)):
+#         done=True
+# =============================================================================
+    done=np.all(np.less_equal(var,var_threshold))
     action, _ = model.predict(ob, deterministic=True)
     
     print("Action: ", action)
