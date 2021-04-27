@@ -8,20 +8,23 @@ Created on Fri Apr 16 22:01:18 2021
 import numpy as np
 import scipy.stats
 from numpy.random import random
+from numpy.linalg import matrix_rank
+import math
 
 class ParticleFilter():
-    def __init__(self,number_timesteps=100,number_particles=100,prior_Voc=3.63,prior_Rs=0.1,prior_Rp=0.03,prior_Cp=500,prior_Vc=0): #Voc=3.63,Rs=0.1,Rp=0.03,Cp=500,Rl=0
-        self.number_timesteps=number_timesteps
+    def __init__(self,prior_var,number_particles=100,prior_Voc=3.63,prior_Rs=0.1,prior_Rp=0.03,prior_Cp=500,prior_Vc=0,observation_noise=1): #Voc=3.63,Rs=0.1,Rp=0.03,Cp=500,Rl=0
+        
         self.number_particles=number_particles
 
     # Parameters
-        #N=number_timesteps
+        
         # What are the parameters to be estimated? Voc, Rs, Rp, Cp, Vc0
         self.number_parameters = 5
         #self.Vb=observation
+        self.prior_var=prior_var
         self.prior_mean = np.array([prior_Voc,prior_Rs,prior_Rp,prior_Cp,prior_Vc])
         self.prior_covariance_matrix = np.eye(self.number_parameters)
-        
+        np.fill_diagonal(self.prior_covariance_matrix,prior_var)  #initializing diagonal elements with variance
         self.roundoff_epsilon = 1e-100
         
         self.voc_index = 0
@@ -29,8 +32,18 @@ class ParticleFilter():
         self.rp_index = 2
         self.cp_index = 3
         self.vc_index = 4
+        
     
-        self.observation_noise_variance = 1
+        self.observation_noise_variance = observation_noise
+        self.particles_value, self.particles_weight = self.initialize_particles(self.number_particles, self.prior_mean, self.prior_covariance_matrix, self.number_parameters)
+
+    
+    #this function is called in env.reset to reinitialize the particles after every episode
+    def reset_prior(self,prior_var,prior_Voc=3.63,prior_Rs=0.02,prior_Rp=0.03,prior_Cp=500,prior_Vc=0):
+        self.prior_mean = np.array([prior_Voc,prior_Rs,prior_Rp,prior_Cp,prior_Vc]) #the code works fine even if it's not there
+        self.prior_covariance_matrix = np.eye(self.number_parameters) #the code works fine even if it's not there
+        np.fill_diagonal(self.prior_covariance_matrix,prior_var)  #the code works fine even if it's not there
+        self.particles_value, self.particles_weight = self.initialize_particles(self.number_particles, self.prior_mean, self.prior_covariance_matrix, self.number_parameters)
     
     # Update the voltage on the capacitor
     def update_vc(self,particles_value, amplitude, frequency,slot_time):
@@ -43,12 +56,13 @@ class ParticleFilter():
     def predict_particles(self,particles_value, number_particles, amplitude, frequency,slot_time):
       for i in range(number_particles):
         self.particles_value[i, self.vc_index] = self.update_vc(particles_value[i], amplitude, frequency,slot_time)
+
     
     # Initialize particles
     def initialize_particles(self,number_particles, prior_mean, prior_covariance_matrix, number_parameters):
       self.particles_value = np.zeros((number_particles, number_parameters))
       self.particles_weight = np.zeros(number_particles)
-    
+           
       for i in range(number_particles):
         #particles_value[i, :] = np.matmul(np.random.randn(1, number_parameters), prior_covariance_matrix) + prior_mean
         self.particles_value[i, :] = np.random.multivariate_normal(prior_mean,prior_covariance_matrix)
@@ -68,13 +82,12 @@ class ParticleFilter():
           rs = self.particles_value[i, self.rs_index]
           vc = self.particles_value[i, self.vc_index]
           ib = amplitude * np.cos(2 * np.pi * frequency * slot_time)
-          likelihood = scipy.stats.norm(voc - ib * rs - vc, self.observation_noise_variance).pdf(current_observation_vb)   
+          likelihood = scipy.stats.norm(voc - ib * rs - vc, math.sqrt(self.observation_noise_variance)).pdf(current_observation_vb)   
           self.particles_weight[i] = self.particles_weight[i] * likelihood
         
       
         self.particles_weight += self.roundoff_epsilon
         self.particles_weight /= np.sum(self.particles_weight)
-        #print("########################",t,"####################")
         #print(particles_weight)
         
     
@@ -105,36 +118,7 @@ class ParticleFilter():
       
     def neff(self,weights):
         return 1. / np.sum(np.square(weights))
-      
-    
-    def simulate(self,observation,amplitude=1,frequency=1,slot_time=1):
-        # Simulation loop
-# =============================================================================
-#         amplitude = 1
-#         frequency = 1
-#         slot_time = 1
-# =============================================================================
-        
-        self.particles_value, self.particles_weight = self.initialize_particles(self.number_particles, self.prior_mean, self.prior_covariance_matrix, self.number_parameters)
-        
-        
-        for t in range(self.number_timesteps):
-          #current_observation_vb = np.random.normal()
-          self.predict_particles(self.particles_value, self.number_particles, amplitude, frequency,slot_time)
-          self.update_particles(self.particles_value, self.particles_weight, observation, amplitude, frequency, slot_time) 
-          #resample
-          if self.neff(self.particles_weight) < len(self.particles_weight+1)/2: #N=length of Particles_weight
-                    
-              index=self.stratified_resample(self.particles_weight)
-              #index=systematic_resample(particles_weight)
-              self.resample_from_index(self.particles_value, self.particles_weight, index)
-          posterior_mean,posterior_covariance,posterior_var=self.estimate(self.particles_value,self.particles_weight)
-              
-        return posterior_mean,posterior_covariance,posterior_var
-      
-        #print(self.particles_value)
-        #print(self.particles_weight)
-    
+
     def estimate(self,particles, weights):
       """returns mean and variance of the weighted particles"""
     
@@ -171,10 +155,31 @@ class ParticleFilter():
     
     #print(posterior_mean)
     #print(posterior_covariance)
+      
     
-    
+    def simulate(self,observation,amplitude=1,frequency=1,slot_time=1):
+        # Simulation loop
 # =============================================================================
-# test = ParticleFilter(number_timesteps=100,number_particles=100)
-# mean,cov=test.simulate(amplitude=1,frequency=1,slot_time=1)
-# print(mean,cov)
+#         amplitude = 1
+#         frequency = 1
+#         slot_time = 1
 # =============================================================================
+        #print("self.prior_cov : ",self.prior_covariance_matrix)
+
+        #self.particles_value, self.particles_weight = self.initialize_particles(self.number_particles, self.prior_mean, self.prior_covariance_matrix, self.number_parameters)
+        
+        
+        #current_observation_vb = np.random.normal()
+        self.predict_particles(self.particles_value, self.number_particles, amplitude, frequency,slot_time)
+        self.update_particles(self.particles_value, self.particles_weight, observation, amplitude, frequency, slot_time) 
+        #resample
+        if self.neff(self.particles_weight) < len(self.particles_weight+1)/2: #N=length of Particles_weight
+                  
+            index=self.stratified_resample(self.particles_weight)
+            #index=systematic_resample(particles_weight)
+            self.resample_from_index(self.particles_value, self.particles_weight, index)
+        posterior_mean,posterior_covariance,posterior_var=self.estimate(self.particles_value,self.particles_weight)
+        #print("posterior_mean : ",posterior_mean)
+        #print("posterior_var : ",posterior_var)
+        return posterior_mean,posterior_covariance,posterior_var
+      
